@@ -1,0 +1,9 @@
+import_configurations:
+  - name: dev_import
+    tables:
+      - table: shop.users
+        where: ""
+        truncate: true
+      - table: shop.orders
+        where: "WHERE created_at >= '2026-05-01'"
+        truncate: true

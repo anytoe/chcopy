@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# Binaries
+/chcopy
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+*.sql
+!examples/initial-schema.sql
+!examples/seed-data.sql
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+.claude/settings.local.json
+*.swp
+*.swo
+*~
+
+# Local planning notes (not for upstream)
+plans/
