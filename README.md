@@ -34,21 +34,23 @@ go build -o chcopy .
 ## Usage
 
 ```sh
-chcopy --config configs/dwh.yaml --name test_import
+chcopy --config examples/config.yaml --name dev_import
 ```
+
+For a full end-to-end walkthrough with two Dockerized ClickHouse instances, see [`examples/README.md`](examples/README.md).
 
 ## Configuration
 
 ```yaml
 import_configurations:
-  - name: test_import
+  - name: dev_import
     tables:
-      - table: clients.
-        where: "WHERE download_date >= '2026-05-01'"
-        truncate: true
-      - table: mtracker_landing.bmat_matches
+      - table: shop.users
         where: ""
-        truncate: false
+        truncate: true
+      - table: shop.orders
+        where: "WHERE created_at >= '2026-05-01'"
+        truncate: true
 ```
 
 Fields:
