@@ -1,6 +1,6 @@
 # ClickHouse Copy
 
-`chcopy` copies a curated slice of data from a source ClickHouse instance into a local ClickHouse instance, driven by a YAML config. Local is the only allowed write target.
+`chcopy` copies a curated slice of data from a source ClickHouse instance into a local one, driven by a YAML config. Local is the only allowed write target.
 
 ## Motivation
 
