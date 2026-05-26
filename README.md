@@ -1,10 +1,10 @@
 # ClickHouse Copy
 
-`chcopy` copies a curated slice of data from a source ClickHouse instance into a local one, driven by a YAML config. Local is the only allowed write target.
+`chcopy` copies a curated slice of data from a source ClickHouse instance into a local one, driven by a YAML config. A soft guard warns and pauses when the target doesn't look local.
 
 ## Motivation
 
-When you need real data on a local ClickHouse — a recent slice of production for debugging, or a stable fixture for tests — ad-hoc `INSERT INTO ... SELECT ... FROM remoteSecure(...)` scripts proliferate. `chcopy` replaces them with a single declarative YAML: named sets of tables and WHERE clauses, repeatable across machines, with hard guards that prevent writes to anything other than localhost.
+When you need real data on a local ClickHouse — a recent slice of production for debugging, or a stable fixture for tests — ad-hoc `INSERT INTO ... SELECT ... FROM remoteSecure(...)` scripts proliferate. `chcopy` replaces them with a single declarative YAML: named sets of tables and WHERE clauses, repeatable across machines, with a soft guard that warns and pauses when the configured target doesn't look local.
 
 Common use cases:
 
@@ -86,6 +86,15 @@ All SQL executes on the local server; the source is reached via `remote()`, or `
 `chcopy` does not block on the write target — you are responsible for pointing it at the right server. As a soft guard, if `CHCOPY_LOCAL_HOST` does not resolve to localhost or a private / docker-bridge address (`10/8`, `172.16/12`, `192.168/16`), `chcopy` prints a warning and pauses for 10 seconds before proceeding. Ctrl-C aborts.
 
 Required env vars (`CHCOPY_LOCAL_*` and `CHCOPY_SOURCE_*`) must still be set, since without them there is nothing to connect to.
+
+## Planned features
+
+- Profiles — a top-level `profiles:` section that composes named import configurations. Example: profile `localdev` bundles `users` + `sales`; profile `sales` is just the `sales` config. Run with `chcopy --config ... --profile localdev`.
+- Column projection & masking — per-table column allowlist/denylist, plus simple transforms (e.g. hash an `email` column) so PII never reaches local.
+- Sampling — `limit: N` or `sample: 0.1` per table for fast smoke imports.
+- Parallel table copies — opt-in worker count to copy independent tables concurrently.
+- CLI table filters — `--only <table>` / `--skip <table>` to run a subset of a named config without editing YAML.
+- Schema pre-flight — diff source vs local columns (name, type, order) before insert and abort with a clear message if they drift, pointing at [`chsync`](https://github.com/anytoe/chsync).
 
 ## Notes
 
