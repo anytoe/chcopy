@@ -1,10 +1,10 @@
 # ClickHouse Copy
 
-`chcopy` copies a curated slice of data from a source ClickHouse instance into a local one, driven by a YAML config. A soft guard warns and pauses when the target doesn't look local.
+`chcopy` copies a curated slice of data from a source ClickHouse instance into a local one, driven by a YAML config. A soft guard prompts for confirmation when the target doesn't look local.
 
 ## Motivation
 
-When you need real data on a local ClickHouse — a recent slice of production for debugging, or a stable fixture for tests — ad-hoc `INSERT INTO ... SELECT ... FROM remoteSecure(...)` scripts proliferate. `chcopy` replaces them with a single declarative YAML: named sets of tables and WHERE clauses, repeatable across machines, with a soft guard that warns and pauses when the configured target doesn't look local.
+When you need real data on a local ClickHouse — a recent slice of production for debugging, or a stable fixture for tests — ad-hoc `INSERT INTO ... SELECT ... FROM remoteSecure(...)` scripts proliferate. `chcopy` replaces them with a single declarative YAML: named sets of tables and WHERE clauses, repeatable across machines, with a soft guard that prompts for confirmation when the configured target doesn't look local.
 
 Common use cases:
 
@@ -68,6 +68,7 @@ Fields:
 | `--name <name>` | Named configuration to run (required unless `--list`) |
 | `--list` | Print available config names and exit |
 | `--dry-run` | Print SQL without executing |
+| `--force` | Skip the non-local target confirmation prompt (required for non-TTY use) |
 
 ## Per-table behavior
 
@@ -83,7 +84,9 @@ All SQL executes on the local server; the source is reached via `remote()`, or `
 
 ## Safety guards
 
-`chcopy` does not block on the write target — you are responsible for pointing it at the right server. As a soft guard, if `CHCOPY_LOCAL_HOST` does not resolve to localhost or a private / docker-bridge address (`10/8`, `172.16/12`, `192.168/16`), `chcopy` prints a warning and pauses for 10 seconds before proceeding. Ctrl-C aborts.
+`chcopy` does not block on the write target — you are responsible for pointing it at the right server. As a soft guard, if `CHCOPY_LOCAL_HOST` does not resolve to localhost or a private / docker-bridge address (`10/8`, `172.16/12`, `192.168/16`), `chcopy` prompts for confirmation before proceeding. The prompt names the target host so you can verify it; only the literal answer `yes` continues — anything else (including empty input, `no`, EOF, Ctrl-C) aborts with a non-zero exit code.
+
+For non-interactive use (CI, scripts), stdin is not a TTY and the prompt cannot be answered, so a non-local target aborts with a clear error unless you pass `--force` to confirm up front. `--dry-run` skips the check entirely since nothing is written.
 
 Required env vars (`CHCOPY_LOCAL_*` and `CHCOPY_SOURCE_*`) must still be set, since without them there is nothing to connect to.
 

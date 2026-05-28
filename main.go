@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/anytoe/chcopy/internal/models"
 	"github.com/anytoe/chcopy/internal/repositories/clickhouse"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -19,6 +21,7 @@ func main() {
 		name       string
 		list       bool
 		dryRun     bool
+		force      bool
 	)
 
 	root := &cobra.Command{
@@ -59,7 +62,9 @@ func main() {
 				clickhouse.PrintDryRun(os.Stdout, source, ic)
 				return nil
 			}
-			warnIfNonLocal(local.Host)
+			if err := confirmNonLocal(local.Host, force, os.Stdin, os.Stderr); err != nil {
+				return err
+			}
 			client, err := clickhouse.Open(local)
 			if err != nil {
 				return err
@@ -77,6 +82,7 @@ func main() {
 	root.Flags().StringVar(&name, "name", "", "Named configuration to run")
 	root.Flags().BoolVar(&list, "list", false, "Print available config names and exit")
 	root.Flags().BoolVar(&dryRun, "dry-run", false, "Print SQL without executing")
+	root.Flags().BoolVar(&force, "force", false, "Skip non-local target confirmation prompt (required for non-TTY use)")
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -110,12 +116,34 @@ func endpointFromEnv(prefix string) (clickhouse.Endpoint, error) {
 	return e, nil
 }
 
-func warnIfNonLocal(host string) {
+func confirmNonLocal(host string, force bool, stdin *os.File, out io.Writer) error {
 	if isLocal(host) {
-		return
+		return nil
 	}
-	fmt.Fprintf(os.Stderr, "WARNING: %q does not look local; proceeding in 10s. Ctrl-C to abort.\n", host)
-	time.Sleep(10 * time.Second)
+	if force {
+		fmt.Fprintf(out, "Target ClickHouse %q does not look local; proceeding due to --force.\n", host)
+		return nil
+	}
+	if !isTerminal(stdin) {
+		return fmt.Errorf("target ClickHouse %q is non-local and stdin is not a TTY; pass --force to confirm non-interactively", host)
+	}
+	fmt.Fprintf(out, "WARNING: target ClickHouse %q does not look local.\n", host)
+	fmt.Fprint(out, "You are about to write to this server. Type 'yes' to proceed: ")
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("aborted: failed to read confirmation for target %q: %w", host, err)
+	}
+	if strings.TrimSpace(line) != "yes" {
+		return fmt.Errorf("aborted: confirmation for non-local target %q was not 'yes'", host)
+	}
+	return nil
+}
+
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
 }
 
 func isLocal(host string) bool {
