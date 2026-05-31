@@ -60,7 +60,10 @@ func main() {
 				return nil
 			}
 			warnIfNonLocal(local.Host)
-			client, err := clickhouse.Open(local)
+			client, err := clickhouse.Open(local, clickhouse.ConnOptions{
+				DialTimeout: cfg.Connection.DialTimeout.Std(),
+				ReadTimeout: cfg.Connection.ReadTimeout.Std(),
+			})
 			if err != nil {
 				return err
 			}

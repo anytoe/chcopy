@@ -6,12 +6,39 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
+	Connection           Connection     `yaml:"connection"`
 	ImportConfigurations []ImportConfig `yaml:"import_configurations"`
+}
+
+// Connection holds optional Go-client tunables for the local ClickHouse connection.
+// Zero values mean "use the clickhouse-go default".
+type Connection struct {
+	DialTimeout Duration `yaml:"dial_timeout"`
+	ReadTimeout Duration `yaml:"read_timeout"`
+}
+
+// Duration is a time.Duration that unmarshals from a YAML string like "30s" or "5m".
+type Duration time.Duration
+
+func (d Duration) Std() time.Duration { return time.Duration(d) }
+
+func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
+	var s string
+	if err := n.Decode(&s); err != nil {
+		return fmt.Errorf("duration must be a string like \"30s\": %w", err)
+	}
+	p, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", s, err)
+	}
+	*d = Duration(p)
+	return nil
 }
 
 type ImportConfig struct {
@@ -43,6 +70,12 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if c.Connection.DialTimeout < 0 {
+		return fmt.Errorf("connection.dial_timeout must be non-negative")
+	}
+	if c.Connection.ReadTimeout < 0 {
+		return fmt.Errorf("connection.read_timeout must be non-negative")
+	}
 	if len(c.ImportConfigurations) == 0 {
 		return fmt.Errorf("no import_configurations defined")
 	}

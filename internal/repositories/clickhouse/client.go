@@ -6,10 +6,18 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
+
+// ConnOptions are optional tunables for the Go client. Zero values fall back to
+// the clickhouse-go defaults.
+type ConnOptions struct {
+	DialTimeout time.Duration
+	ReadTimeout time.Duration
+}
 
 type Endpoint struct {
 	Host, Port, User, Password string
@@ -29,7 +37,7 @@ type Client struct {
 	conn driver.Conn
 }
 
-func Open(e Endpoint) (*Client, error) {
+func Open(e Endpoint, co ConnOptions) (*Client, error) {
 	opts := &clickhouse.Options{
 		Addr: []string{e.Addr()},
 		Auth: clickhouse.Auth{
@@ -37,6 +45,12 @@ func Open(e Endpoint) (*Client, error) {
 			Username: e.User,
 			Password: e.Password,
 		},
+	}
+	if co.DialTimeout > 0 {
+		opts.DialTimeout = co.DialTimeout
+	}
+	if co.ReadTimeout > 0 {
+		opts.ReadTimeout = co.ReadTimeout
 	}
 	if e.IsSecure() {
 		opts.TLS = &tls.Config{}

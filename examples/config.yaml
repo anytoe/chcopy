@@ -1,3 +1,7 @@
+connection:
+  dial_timeout: 30s
+  read_timeout: 5m
+
 import_configurations:
   - name: dev_import
     tables:

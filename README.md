@@ -42,6 +42,10 @@ For a full end-to-end walkthrough with two Dockerized ClickHouse instances, see 
 ## Configuration
 
 ```yaml
+connection:
+  dial_timeout: 30s
+  read_timeout: 5m
+
 import_configurations:
   - name: dev_import
     tables:
@@ -53,12 +57,34 @@ import_configurations:
         truncate: true
 ```
 
-Fields:
+Top-level `connection` (optional) — Go-client tunables for the local connection. Omit either field to use clickhouse-go defaults.
+
+- `dial_timeout` — TCP/TLS handshake timeout (Go default: 30s).
+- `read_timeout` — max wait for a single Read from ClickHouse on an established connection. Not a query wall-clock cap; for that, set the server-side `max_execution_time` setting.
+
+Values use Go duration syntax: `30s`, `5m`, `2h`.
+
+Per import configuration:
 
 - `name` — unique within the file.
 - `table` — fully qualified `db.table`. Must already exist in the local instance.
 - `where` — raw `WHERE ...` clause, or empty string for full table.
 - `truncate` — if true, `TRUNCATE TABLE` runs locally before insert.
+
+### Environment variables
+
+Connection details live in env vars, not the YAML. All eight are required:
+
+| Variable | Description |
+|---|---|
+| `CHCOPY_LOCAL_HOST` | Local ClickHouse host (must look local — see Safety guards) |
+| `CHCOPY_LOCAL_PORT` | Local native port (`9000` plain, `9440` TLS) |
+| `CHCOPY_LOCAL_USER` | Local username |
+| `CHCOPY_LOCAL_PASSWORD` | Local password |
+| `CHCOPY_SOURCE_HOST` | Source ClickHouse host (typically prod) |
+| `CHCOPY_SOURCE_PORT` | Source native port (`9000` plain, `9440` TLS) |
+| `CHCOPY_SOURCE_USER` | Source username |
+| `CHCOPY_SOURCE_PASSWORD` | Source password |
 
 ## CLI
 
@@ -95,6 +121,8 @@ Required env vars (`CHCOPY_LOCAL_*` and `CHCOPY_SOURCE_*`) must still be set, si
 - Parallel table copies — opt-in worker count to copy independent tables concurrently.
 - CLI table filters — `--only <table>` / `--skip <table>` to run a subset of a named config without editing YAML.
 - Schema pre-flight — diff source vs local columns (name, type, order) before insert and abort with a clear message if they drift, pointing at [`chsync`](https://github.com/anytoe/chsync).
+- Configurable query settings — pass arbitrary ClickHouse `SETTINGS` (e.g. `max_threads`, `max_memory_usage`, `max_execution_time`) on the import query, set globally or per table.
+- Batch import — split a single table copy into chunks (by primary key range, date bucket, or row count) so large tables can resume on failure and avoid blowing memory on the local server.
 
 ## Notes
 
