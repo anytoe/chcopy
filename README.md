@@ -43,8 +43,8 @@ For a full end-to-end walkthrough with two Dockerized ClickHouse instances, see 
 
 ```yaml
 connection:
-  dial_timeout: 30s
-  read_timeout: 5m
+  dial_timeout: 30s  # clickhouse-go default
+  read_timeout: 5m   # clickhouse-go default
 
 import_configurations:
   - name: dev_import
