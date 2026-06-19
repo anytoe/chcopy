@@ -182,6 +182,49 @@ func TestEndToEnd(t *testing.T) {
 		assert.Equal(t, uint64(5), countRows(t, "shop.events"))
 		assert.Equal(t, uint64(0), countRows(t, "shop.events WHERE year = 2023"))
 	})
+
+	t.Run("non-local target without --force aborts on non-TTY", func(t *testing.T) {
+		nonLocalEnv := envFor(map[string]string{
+			"ENV":                    "LOCAL",
+			"CHCOPY_LOCAL_HOST":      "ch-prod.invalid",
+			"CHCOPY_LOCAL_PORT":      "9001",
+			"CHCOPY_LOCAL_USER":      "default",
+			"CHCOPY_LOCAL_PASSWORD":  "default_password",
+			"CHCOPY_SOURCE_HOST":     "source-clickhouse",
+			"CHCOPY_SOURCE_PORT":     "9000",
+			"CHCOPY_SOURCE_USER":     "default",
+			"CHCOPY_SOURCE_PASSWORD": "default_password",
+		})
+
+		out, err := runChcopy(nonLocalEnv, "--config", configFile, "--name", "dev_import")
+		require.Error(t, err, out)
+		assert.Contains(t, out, "ch-prod.invalid")
+		assert.Contains(t, out, "non-local")
+		assert.Contains(t, out, "--force")
+	})
+
+	t.Run("non-local target with --force bypasses prompt", func(t *testing.T) {
+		nonLocalEnv := envFor(map[string]string{
+			"ENV":                    "LOCAL",
+			"CHCOPY_LOCAL_HOST":      "ch-prod.invalid",
+			"CHCOPY_LOCAL_PORT":      "9001",
+			"CHCOPY_LOCAL_USER":      "default",
+			"CHCOPY_LOCAL_PASSWORD":  "default_password",
+			"CHCOPY_SOURCE_HOST":     "source-clickhouse",
+			"CHCOPY_SOURCE_PORT":     "9000",
+			"CHCOPY_SOURCE_USER":     "default",
+			"CHCOPY_SOURCE_PASSWORD": "default_password",
+		})
+
+		// --force lets the run progress past the prompt; the connection then
+		// fails because the host is unreachable. Both signals confirm the
+		// flag bypassed the gate (no "not a TTY" abort, hostname is echoed).
+		out, err := runChcopy(nonLocalEnv, "--config", configFile, "--name", "dev_import", "--force")
+		require.Error(t, err, out)
+		assert.Contains(t, out, "ch-prod.invalid")
+		assert.Contains(t, out, "proceeding due to --force")
+		assert.NotContains(t, out, "not a TTY")
+	})
 }
 
 func envFor(overrides map[string]string) []string {
