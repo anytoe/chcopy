@@ -36,7 +36,7 @@ func LocalCountSQL(t models.Table) string {
 }
 
 func TruncateSQL(t models.Table) string {
-	return "TRUNCATE TABLE " + t.Table
+	return "TRUNCATE TABLE " + t.Table + " SETTINGS max_table_size_to_drop = 0"
 }
 
 func InsertSQL(source Endpoint, t models.Table) string {
