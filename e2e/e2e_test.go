@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,6 +158,30 @@ func TestEndToEnd(t *testing.T) {
 		minDate := queryString(t, "SELECT toString(min(created_at)) FROM shop.orders")
 		assert.Equal(t, "2026-05-03 16:45:00", minDate)
 	})
+
+	t.Run("batch dry run prints resolution and one templated insert", func(t *testing.T) {
+		out, err := runChcopy(env, "--config", configFile, "--name", "batch_import", "--dry-run")
+		require.NoError(t, err, out)
+
+		assert.Contains(t, out, "batched by year")
+		assert.Contains(t, out, "SELECT DISTINCT year FROM")
+		assert.Contains(t, out, "ORDER BY year ASC")
+		assert.Contains(t, out, "WHERE year >= 2024 AND year = <year>")
+		// Exactly one templated INSERT, not one per batch value.
+		assert.Equal(t, 1, strings.Count(out, "INSERT INTO shop.events"))
+	})
+
+	t.Run("batch copy loops over distinct values honoring where", func(t *testing.T) {
+		truncateEvents(t)
+
+		out, err := runChcopy(env, "--config", configFile, "--name", "batch_import")
+		require.NoError(t, err, out)
+		assert.Contains(t, out, "batches=2")
+
+		// 2024 (2 rows) + 2025 (3 rows); 2023 excluded by the WHERE clause.
+		assert.Equal(t, uint64(5), countRows(t, "shop.events"))
+		assert.Equal(t, uint64(0), countRows(t, "shop.events WHERE year = 2023"))
+	})
 }
 
 func envFor(overrides map[string]string) []string {
@@ -182,6 +207,14 @@ func truncateLocal(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, conn.Exec(ctx, "TRUNCATE TABLE shop.users"))
 	require.NoError(t, conn.Exec(ctx, "TRUNCATE TABLE shop.orders"))
+}
+
+func truncateEvents(t *testing.T) {
+	t.Helper()
+	conn, err := openLocal()
+	require.NoError(t, err)
+	defer conn.Close()
+	require.NoError(t, conn.Exec(context.Background(), "TRUNCATE TABLE shop.events"))
 }
 
 func countRows(t *testing.T, table string) uint64 {

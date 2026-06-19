@@ -69,7 +69,8 @@ Per import configuration:
 - `name` — unique within the file.
 - `table` — fully qualified `db.table`. Must already exist in the local instance.
 - `where` — raw `WHERE ...` clause, or empty string for full table.
-- `truncate` — if true, `TRUNCATE TABLE` runs locally before insert.
+- `batch` — optional column name. When set, the copy is split into one `INSERT ... SELECT` per distinct value of that column (resolved on source, honoring `where`, ascending). Useful for large tables that would otherwise be one giant insert.
+- `truncate` — if true, `TRUNCATE TABLE` runs locally before insert (once, before any batches).
 
 ### Environment variables
 
@@ -103,7 +104,10 @@ Tables run sequentially in declared YAML order. For each table:
 2. Print local row count before.
 3. If `truncate: true`, `TRUNCATE TABLE` locally.
 4. `INSERT INTO <table> SELECT * FROM remote(<source>, <table>, user, pw) <WHERE...>`.
+   With `batch: <col>` set, first run `SELECT DISTINCT <col> FROM remote(...) <WHERE...> ORDER BY <col> ASC`, then run one INSERT per value, appending `AND <col> = <value>` to the WHERE.
 5. Print local row count after.
+
+With `--dry-run`, a batched table prints the `SELECT DISTINCT` resolution query plus a single templated INSERT (the real per-batch values are only known at run time, and dry-run never connects).
 
 All SQL executes on the local server; the source is reached via `remote()`, or `remoteSecure()` when `CHCOPY_SOURCE_PORT=9440` (ClickHouse's TLS native port). The same heuristic applies to the local connection — port `9440` ⇒ TLS, port `9000` ⇒ plain. Failures abort immediately — no partial-success bookkeeping.
 
@@ -122,7 +126,6 @@ Required env vars (`CHCOPY_LOCAL_*` and `CHCOPY_SOURCE_*`) must still be set, si
 - CLI table filters — `--only <table>` / `--skip <table>` to run a subset of a named config without editing YAML.
 - Schema pre-flight — diff source vs local columns (name, type, order) before insert and abort with a clear message if they drift, pointing at [`chsync`](https://github.com/anytoe/chsync).
 - Configurable query settings — pass arbitrary ClickHouse `SETTINGS` (e.g. `max_threads`, `max_memory_usage`, `max_execution_time`) on the import query, set globally or per table.
-- Batch import — split a single table copy into chunks (by primary key range, date bucket, or row count) so large tables can resume on failure and avoid blowing memory on the local server.
 
 ## Notes
 
