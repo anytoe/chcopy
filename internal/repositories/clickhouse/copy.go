@@ -133,7 +133,7 @@ func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *mo
 		}
 		batched := ""
 		if strings.TrimSpace(t.Batch) != "" {
-			n, err := c.runBatched(ctx, source, t)
+			n, err := c.runBatched(ctx, out, source, t)
 			if err != nil {
 				return err
 			}
@@ -153,15 +153,16 @@ func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *mo
 
 // runBatched resolves the distinct batch values on source (ascending) and runs
 // one INSERT SELECT per value. It returns the number of batches processed.
-func (c *Client) runBatched(ctx context.Context, source Endpoint, t models.Table) (int, error) {
+func (c *Client) runBatched(ctx context.Context, out io.Writer, source Endpoint, t models.Table) (int, error) {
 	values, err := c.Values(ctx, DistinctBatchesSQL(source, t))
 	if err != nil {
 		return 0, fmt.Errorf("%s: resolve batches: %w", t.Table, err)
 	}
-	for _, v := range values {
+	for i, v := range values {
 		if err := c.Exec(ctx, BatchInsertSQL(source, t, formatValue(v))); err != nil {
 			return 0, fmt.Errorf("%s: insert batch %v: %w", t.Table, v, err)
 		}
+		fmt.Fprintf(out, "%s: batch %d/%d (%s=%s) done\n", t.Table, i+1, len(values), t.Batch, formatValue(v))
 	}
 	return len(values), nil
 }
