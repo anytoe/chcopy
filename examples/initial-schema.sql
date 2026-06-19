@@ -15,3 +15,10 @@ CREATE TABLE shop.orders (
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree
 ORDER BY id;
+
+CREATE TABLE shop.events (
+    id Int32,
+    year Int32,
+    name String
+) ENGINE = MergeTree
+ORDER BY id;

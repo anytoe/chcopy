@@ -11,3 +11,11 @@ INSERT INTO shop.orders (id, user_id, amount, created_at) VALUES
     (4, 3, 42.00,  '2026-05-03 16:45:00'),
     (5, 3, 75.25,  '2026-05-08 18:00:00'),
     (6, 4, 12.00,  '2026-05-12 20:00:00');
+
+INSERT INTO shop.events (id, year, name) VALUES
+    (1, 2023, 'old launch'),
+    (2, 2024, 'spring sale'),
+    (3, 2024, 'summer sale'),
+    (4, 2025, 'winter sale'),
+    (5, 2025, 'black friday'),
+    (6, 2025, 'cyber monday');

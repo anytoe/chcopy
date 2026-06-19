@@ -49,6 +49,7 @@ type ImportConfig struct {
 type Table struct {
 	Table    string `yaml:"table"`
 	Where    string `yaml:"where"`
+	Batch    string `yaml:"batch"`
 	Truncate bool   `yaml:"truncate"`
 }
 
@@ -99,6 +100,9 @@ func (c *Config) validate() error {
 			w := strings.TrimSpace(t.Where)
 			if w != "" && !strings.HasPrefix(strings.ToUpper(w), "WHERE") {
 				return fmt.Errorf("%s.tables[%d]: where must start with WHERE, got %q", ic.Name, j, t.Where)
+			}
+			if b := strings.TrimSpace(t.Batch); b != "" && strings.ContainsAny(b, " \t") {
+				return fmt.Errorf("%s.tables[%d]: batch must be a single column name, got %q", ic.Name, j, t.Batch)
 			}
 		}
 	}

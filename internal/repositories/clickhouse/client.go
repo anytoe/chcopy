@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -76,6 +77,31 @@ func (c *Client) Count(ctx context.Context, sql string) (uint64, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// Values runs a single-column query and returns each row's value in native Go
+// type. The destination is built from the column's ScanType because the driver
+// does not support scanning into *interface{}.
+func (c *Client) Values(ctx context.Context, sql string) ([]any, error) {
+	rows, err := c.conn.Query(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cts := rows.ColumnTypes()
+	if len(cts) != 1 {
+		return nil, fmt.Errorf("expected 1 column, got %d", len(cts))
+	}
+	scanType := cts[0].ScanType()
+	var out []any
+	for rows.Next() {
+		dst := reflect.New(scanType)
+		if err := rows.Scan(dst.Interface()); err != nil {
+			return nil, err
+		}
+		out = append(out, dst.Elem().Interface())
+	}
+	return out, rows.Err()
 }
 
 // quoteString wraps s in single quotes for a SQL literal, doubling any embedded quotes.
