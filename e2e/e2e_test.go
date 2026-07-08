@@ -189,6 +189,9 @@ func TestEndToEnd(t *testing.T) {
 		out, err := runChcopy(env, "--config", configFile, "--name", "batch_import", "--num-threads", "4")
 		require.NoError(t, err, out)
 		assert.Contains(t, out, "batches=2")
+		// Progress lines are annotated with the worker that pulled each batch.
+		// (Which worker id fires is scheduler-dependent, so only assert the label.)
+		assert.Contains(t, out, "[thread ")
 
 		// Concurrency must not change the outcome: same slice as the sequential run.
 		assert.Equal(t, uint64(5), countRows(t, "shop.events"))

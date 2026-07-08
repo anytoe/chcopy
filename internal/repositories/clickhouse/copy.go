@@ -169,30 +169,49 @@ func (c *Client) runBatched(ctx context.Context, out io.Writer, source Endpoint,
 	}
 	total := len(values)
 
-	g, gctx := errgroup.WithContext(ctx)
-	if numThreads > 1 {
-		g.SetLimit(numThreads)
-	} else {
-		g.SetLimit(1)
+	workers := numThreads
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > total {
+		workers = total // no point starting more threads than there are batches
 	}
 
 	var (
 		mu   sync.Mutex // serialises writes to out so progress lines never interleave
 		done atomic.Int64
 	)
-	for _, v := range values {
-		v := v
-		g.Go(func() error {
-			if err := c.Exec(gctx, BatchInsertSQL(source, t, formatValue(v))); err != nil {
-				return fmt.Errorf("%s: insert batch %v: %w", t.Table, v, err)
+	jobs := make(chan any)
+	g, gctx := errgroup.WithContext(ctx)
+	for w := 1; w <= workers; w++ {
+		g.Go(func() error { // w is the stable worker id, shown in progress output
+			for v := range jobs {
+				if err := c.Exec(gctx, BatchInsertSQL(source, t, formatValue(v))); err != nil {
+					return fmt.Errorf("%s: insert batch %v: %w", t.Table, v, err)
+				}
+				n := done.Add(1)
+				mu.Lock()
+				if workers > 1 {
+					fmt.Fprintf(out, "%s: [thread %d] batch %d/%d (%s=%s) done\n", t.Table, w, n, total, t.Batch, formatValue(v))
+				} else {
+					fmt.Fprintf(out, "%s: batch %d/%d (%s=%s) done\n", t.Table, n, total, t.Batch, formatValue(v))
+				}
+				mu.Unlock()
 			}
-			n := done.Add(1)
-			mu.Lock()
-			fmt.Fprintf(out, "%s: batch %d/%d (%s=%s) done\n", t.Table, n, total, t.Batch, formatValue(v))
-			mu.Unlock()
 			return nil
 		})
 	}
+	// Feed batch values to the workers; stop early once a worker has failed
+	// (errgroup cancels gctx), then close so idle workers drain and exit.
+feed:
+	for _, v := range values {
+		select {
+		case jobs <- v:
+		case <-gctx.Done():
+			break feed
+		}
+	}
+	close(jobs)
 	if err := g.Wait(); err != nil {
 		return 0, err
 	}
