@@ -8,8 +8,8 @@ services:
       CLICKHOUSE_PASSWORD: default_password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "8133:8123"
+      - "9010:9000"
     volumes:
       - ./initial-schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./seed-data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
@@ -23,7 +23,7 @@ services:
       CLICKHOUSE_PASSWORD: default_password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8124:8123"
-      - "9001:9000"
+      - "8134:8123"
+      - "9011:9000"
     volumes:
       - ./initial-schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro

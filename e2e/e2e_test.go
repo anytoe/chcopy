@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	localAddr   = "localhost:9001"
+	localAddr   = "localhost:9011"
 	composeFile = "../examples/docker-compose.yml"
 	configFile  = "../examples/config.yaml"
 )
@@ -115,7 +115,7 @@ func TestEndToEnd(t *testing.T) {
 	env := envFor(map[string]string{
 		"ENV":                   "LOCAL",
 		"CHCOPY_LOCAL_HOST":     "localhost",
-		"CHCOPY_LOCAL_PORT":     "9001",
+		"CHCOPY_LOCAL_PORT":     "9011",
 		"CHCOPY_LOCAL_USER":     "default",
 		"CHCOPY_LOCAL_PASSWORD": "default_password",
 		"CHCOPY_SOURCE_HOST":    "source-clickhouse",
@@ -157,6 +157,26 @@ func TestEndToEnd(t *testing.T) {
 
 		minDate := queryString(t, "SELECT toString(min(created_at)) FROM shop.orders")
 		assert.Equal(t, "2026-05-03 16:45:00", minDate)
+	})
+
+	t.Run("only flag runs only the selected table", func(t *testing.T) {
+		truncateLocal(t)
+
+		out, err := runChcopy(env, "--config", configFile, "--name", "dev_import", "--only", "shop.orders")
+		require.NoError(t, err, out)
+
+		// Only shop.orders was imported; shop.users was skipped entirely.
+		assert.Contains(t, out, "shop.orders")
+		assert.NotContains(t, out, "shop.users")
+		assert.Equal(t, uint64(3), countRows(t, "shop.orders"))
+		assert.Equal(t, uint64(0), countRows(t, "shop.users"))
+	})
+
+	t.Run("only flag with unknown table errors", func(t *testing.T) {
+		out, err := runChcopy(env, "--config", configFile, "--name", "dev_import", "--only", "shop.nope", "--dry-run")
+		require.Error(t, err, out)
+		assert.Contains(t, out, "shop.nope")
+		assert.Contains(t, out, "no such table")
 	})
 
 	t.Run("batch dry run prints resolution and one templated insert", func(t *testing.T) {
