@@ -125,3 +125,30 @@ func (c *Config) Find(name string) (*ImportConfig, bool) {
 	}
 	return nil, false
 }
+
+// Select returns a copy of ic containing only the named tables, preserving the
+// order they appear in the configuration (not the order requested). Every
+// requested name must exist in ic; unknown names are reported together.
+func (ic *ImportConfig) Select(names []string) (*ImportConfig, error) {
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	out := ImportConfig{Name: ic.Name}
+	for _, t := range ic.Tables {
+		if want[t.Table] {
+			out.Tables = append(out.Tables, t)
+			delete(want, t.Table)
+		}
+	}
+	if len(want) > 0 {
+		missing := make([]string, 0, len(want))
+		for _, n := range names {
+			if want[n] {
+				missing = append(missing, n)
+			}
+		}
+		return nil, fmt.Errorf("%s: no such table(s) in configuration: %s", ic.Name, strings.Join(missing, ", "))
+	}
+	return &out, nil
+}

@@ -19,6 +19,7 @@ func main() {
 	var (
 		configPath string
 		name       string
+		only       string
 		list       bool
 		dryRun     bool
 		force      bool
@@ -49,6 +50,12 @@ func main() {
 			ic, ok := cfg.Find(name)
 			if !ok {
 				return fmt.Errorf("no import configuration named %q", name)
+			}
+			if sel := splitTables(only); len(sel) > 0 {
+				ic, err = ic.Select(sel)
+				if err != nil {
+					return err
+				}
 			}
 			local, err := endpointFromEnv("CHCOPY_LOCAL")
 			if err != nil {
@@ -83,6 +90,7 @@ func main() {
 
 	root.Flags().StringVar(&configPath, "config", "", "YAML config file (required)")
 	root.Flags().StringVar(&name, "name", "", "Named configuration to run")
+	root.Flags().StringVar(&only, "only", "", "Comma-separated db.table names to run (subset of the configuration; default all)")
 	root.Flags().BoolVar(&list, "list", false, "Print available config names and exit")
 	root.Flags().BoolVar(&dryRun, "dry-run", false, "Print SQL without executing")
 	root.Flags().BoolVar(&force, "force", false, "Skip non-local target confirmation prompt (required for non-TTY use)")
@@ -91,6 +99,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// splitTables parses the --only flag: comma-separated names, trimmed, empties dropped.
+func splitTables(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func endpointFromEnv(prefix string) (clickhouse.Endpoint, error) {
