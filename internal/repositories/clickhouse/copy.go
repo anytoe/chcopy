@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anytoe/chcopy/internal/models"
+	"golang.org/x/sync/errgroup"
 )
 
 func RemoteExpr(source Endpoint, table string) string {
@@ -114,7 +117,10 @@ func PrintDryRun(out io.Writer, source Endpoint, ic *models.ImportConfig) {
 }
 
 // Run executes the import plan against local. Source is reached via remote() in SQL.
-func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *models.ImportConfig) error {
+// numThreads is the per-table batch concurrency (see runBatched); values < 1 mean
+// sequential. The outer per-table loop stays sequential so the
+// count-before -> truncate -> insert -> count-after ordering is preserved.
+func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *models.ImportConfig, numThreads int) error {
 	for _, t := range ic.Tables {
 		srcCount, err := c.Count(ctx, SourceCountSQL(source, t))
 		if err != nil {
@@ -133,7 +139,7 @@ func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *mo
 		}
 		batched := ""
 		if strings.TrimSpace(t.Batch) != "" {
-			n, err := c.runBatched(ctx, out, source, t)
+			n, err := c.runBatched(ctx, out, source, t, numThreads)
 			if err != nil {
 				return err
 			}
@@ -152,17 +158,43 @@ func (c *Client) Run(ctx context.Context, out io.Writer, source Endpoint, ic *mo
 }
 
 // runBatched resolves the distinct batch values on source (ascending) and runs
-// one INSERT SELECT per value. It returns the number of batches processed.
-func (c *Client) runBatched(ctx context.Context, out io.Writer, source Endpoint, t models.Table) (int, error) {
+// one INSERT SELECT per value. Up to numThreads inserts run concurrently
+// (numThreads < 1 means sequential). The first failing batch cancels the
+// remaining in-flight and queued batches and its error is returned. It returns
+// the number of batches processed.
+func (c *Client) runBatched(ctx context.Context, out io.Writer, source Endpoint, t models.Table, numThreads int) (int, error) {
 	values, err := c.Values(ctx, DistinctBatchesSQL(source, t))
 	if err != nil {
 		return 0, fmt.Errorf("%s: resolve batches: %w", t.Table, err)
 	}
-	for i, v := range values {
-		if err := c.Exec(ctx, BatchInsertSQL(source, t, formatValue(v))); err != nil {
-			return 0, fmt.Errorf("%s: insert batch %v: %w", t.Table, v, err)
-		}
-		fmt.Fprintf(out, "%s: batch %d/%d (%s=%s) done\n", t.Table, i+1, len(values), t.Batch, formatValue(v))
+	total := len(values)
+
+	g, gctx := errgroup.WithContext(ctx)
+	if numThreads > 1 {
+		g.SetLimit(numThreads)
+	} else {
+		g.SetLimit(1)
 	}
-	return len(values), nil
+
+	var (
+		mu   sync.Mutex // serialises writes to out so progress lines never interleave
+		done atomic.Int64
+	)
+	for _, v := range values {
+		v := v
+		g.Go(func() error {
+			if err := c.Exec(gctx, BatchInsertSQL(source, t, formatValue(v))); err != nil {
+				return fmt.Errorf("%s: insert batch %v: %w", t.Table, v, err)
+			}
+			n := done.Add(1)
+			mu.Lock()
+			fmt.Fprintf(out, "%s: batch %d/%d (%s=%s) done\n", t.Table, n, total, t.Batch, formatValue(v))
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return 0, err
+	}
+	return total, nil
 }

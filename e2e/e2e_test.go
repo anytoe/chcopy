@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	localAddr   = "localhost:9001"
+	localAddr   = "localhost:9011"
 	composeFile = "../examples/docker-compose.yml"
 	configFile  = "../examples/config.yaml"
 )
@@ -115,7 +115,7 @@ func TestEndToEnd(t *testing.T) {
 	env := envFor(map[string]string{
 		"ENV":                   "LOCAL",
 		"CHCOPY_LOCAL_HOST":     "localhost",
-		"CHCOPY_LOCAL_PORT":     "9001",
+		"CHCOPY_LOCAL_PORT":     "9011",
 		"CHCOPY_LOCAL_USER":     "default",
 		"CHCOPY_LOCAL_PASSWORD": "default_password",
 		"CHCOPY_SOURCE_HOST":    "source-clickhouse",
@@ -181,6 +181,24 @@ func TestEndToEnd(t *testing.T) {
 		// 2024 (2 rows) + 2025 (3 rows); 2023 excluded by the WHERE clause.
 		assert.Equal(t, uint64(5), countRows(t, "shop.events"))
 		assert.Equal(t, uint64(0), countRows(t, "shop.events WHERE year = 2023"))
+	})
+
+	t.Run("batch copy with num-threads matches sequential result", func(t *testing.T) {
+		truncateEvents(t)
+
+		out, err := runChcopy(env, "--config", configFile, "--name", "batch_import", "--num-threads", "4")
+		require.NoError(t, err, out)
+		assert.Contains(t, out, "batches=2")
+
+		// Concurrency must not change the outcome: same slice as the sequential run.
+		assert.Equal(t, uint64(5), countRows(t, "shop.events"))
+		assert.Equal(t, uint64(0), countRows(t, "shop.events WHERE year = 2023"))
+	})
+
+	t.Run("invalid num-threads is rejected", func(t *testing.T) {
+		out, err := runChcopy(env, "--config", configFile, "--name", "batch_import", "--num-threads", "0")
+		require.Error(t, err, out)
+		assert.Contains(t, out, "num-threads")
 	})
 
 	t.Run("non-local target without --force aborts on non-TTY", func(t *testing.T) {

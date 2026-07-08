@@ -22,6 +22,7 @@ func main() {
 		list       bool
 		dryRun     bool
 		force      bool
+		numThreads int
 	)
 
 	root := &cobra.Command{
@@ -65,9 +66,13 @@ func main() {
 			if err := confirmNonLocal(local.Host, force, os.Stdin, os.Stderr); err != nil {
 				return err
 			}
+			if numThreads < 1 {
+				return fmt.Errorf("--num-threads must be >= 1")
+			}
 			client, err := clickhouse.Open(local, clickhouse.ConnOptions{
-				DialTimeout: cfg.Connection.DialTimeout.Std(),
-				ReadTimeout: cfg.Connection.ReadTimeout.Std(),
+				DialTimeout:  cfg.Connection.DialTimeout.Std(),
+				ReadTimeout:  cfg.Connection.ReadTimeout.Std(),
+				MaxOpenConns: numThreads,
 			})
 			if err != nil {
 				return err
@@ -77,7 +82,7 @@ func main() {
 			if err := client.Ping(ctx); err != nil {
 				return fmt.Errorf("ping local: %w", err)
 			}
-			return client.Run(ctx, os.Stdout, source, ic)
+			return client.Run(ctx, os.Stdout, source, ic, numThreads)
 		},
 	}
 
@@ -86,6 +91,7 @@ func main() {
 	root.Flags().BoolVar(&list, "list", false, "Print available config names and exit")
 	root.Flags().BoolVar(&dryRun, "dry-run", false, "Print SQL without executing")
 	root.Flags().BoolVar(&force, "force", false, "Skip non-local target confirmation prompt (required for non-TTY use)")
+	root.Flags().IntVar(&numThreads, "num-threads", 1, "Concurrent per-batch inserts for batched tables (1 = sequential)")
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
