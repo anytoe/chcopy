@@ -16,8 +16,9 @@ import (
 // ConnOptions are optional tunables for the Go client. Zero values fall back to
 // the clickhouse-go defaults.
 type ConnOptions struct {
-	DialTimeout time.Duration
-	ReadTimeout time.Duration
+	DialTimeout  time.Duration
+	ReadTimeout  time.Duration
+	MaxOpenConns int
 }
 
 type Endpoint struct {
@@ -52,6 +53,9 @@ func Open(e Endpoint, co ConnOptions) (*Client, error) {
 	}
 	if co.ReadTimeout > 0 {
 		opts.ReadTimeout = co.ReadTimeout
+	}
+	if co.MaxOpenConns > 0 {
+		opts.MaxOpenConns = co.MaxOpenConns
 	}
 	if e.IsSecure() {
 		opts.TLS = &tls.Config{}
